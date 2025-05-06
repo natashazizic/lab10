@@ -1,0 +1,390 @@
+---
+title: "Lab 10: Distances and the Border Zone"
+subtitle: 'Ecosystem Science and Sustainability'
+author:
+  - name: Natasha Zizic
+    email: "nzizic@colostste.edu"
+format: html
+output: docs
+execute: 
+  echo: true
+---
+
+**Libraries:**
+
+```{r}
+library(tidyverse)
+library(sf)
+library(units)
+library(AOI)
+library(gghighlight)
+library(ggrepel)
+library(knitr)
+library(flextable)
+```
+
+## Question 1:
+
+**Define a projection:**
+
+```{r}
+eqdc <- '+proj=eqdc +lat_0=40 +lon_0=-96 +lat_1=20 +lat_2=60 +x_0=0 +y_0=0 +datum=NAD83 +units=m +no_defs'
+```
+
+**USA State Boundaries:**
+
+```{r}
+remotes::install_github("mikejohnson51/AOI")
+```
+
+```{r}
+usstates <- aoi_get(state = 'conus')
+```
+
+**Country Boundaries:**
+
+```{r}
+countbound <- aoi_get(country = c("MX", "CA", "USA"))
+```
+
+**City Locations:**
+
+```{r}
+uscities <- read_csv('/Users/tash/git/lab10/simplemaps_uscities_basicv1.90/uscities.csv')
+```
+
+```{r}
+(uscities_sf <- st_as_sf(uscities, coords = c("lng", "lat"), crs = 4326))
+```
+
+```{r}
+uscities_sf <- uscities_sf %>%
+  filter(!state_id %in% c("AK", "HI", "PR"))
+```
+
+## Question 2:
+
+**Distance to USA Boarder:**
+
+```{r}
+usstates <- st_transform(usstates, crs = eqdc)
+countbound <- st_transform(countbound, crs = eqdc)
+```
+
+```{r}
+usa_border <- st_union(usstates) %>% 
+  st_cast("MULTILINESTRING")
+```
+
+```{r}
+usa_border <- st_transform(usa_border, crs = eqdc)
+uscities_sf <- st_transform(uscities_sf, crs = eqdc)
+```
+
+```{r}
+uscities_sf$usborder_dist <- set_units(st_distance(uscities_sf, usa_border), "km")
+```
+
+```{r}
+far_usborder <- uscities_sf %>%
+  arrange(desc(usborder_dist)) %>%
+  select(city, state_name, usborder_dist) %>%
+  slice(1:5)
+
+flextable(far_usborder)
+```
+
+The five farthest cities from the US border are all in Kansas. They include Minneapolis, Ada, Barnard, Manchester and Talmage.
+
+**Distance to States:**
+
+```{r}
+state_borders <- st_combine(usstates) %>%
+  st_cast("MULTILINESTRING")
+```
+
+```{r}
+uscities_sf$state_border_dist <- set_units(st_distance(uscities_sf, state_borders), "km")
+```
+
+```{r}
+far_state_border <- uscities_sf %>%
+  arrange(desc(state_border_dist)) %>%
+  select(city, state_name, state_border_dist) %>%
+  slice(1:5)
+
+flextable(far_state_border)
+```
+
+The five cities farthest from their state border are all in Texas. These are Briggs, Lampasas, Florence, Salado, and Kempner.
+
+**Distance to Mexico:**
+
+```{r}
+mex_border <- countbound %>%
+  filter(name_long == "Mexico") %>%
+  st_cast("MULTILINESTRING")
+```
+
+```{r}
+uscities_sf$mex_dist <- set_units(st_distance(uscities_sf, mex_border), "km")
+```
+
+```{r}
+far_mex <- uscities_sf %>%
+  arrange(desc(mex_dist)) %>%
+  select(city, state_name, mex_dist) %>%
+  slice(1:5)
+
+flextable(far_mex)
+```
+
+The five cities farthest from the Mexico border are all in Maine. These include Grand Isle,, Caribou, Presque Isle, Oakfield, and Island Falls.
+
+**Distance To Canada:**
+
+```{r}
+can_border <- countbound %>%
+  filter(name_long == "Canada") %>%
+  st_cast("MULTILINESTRING")
+```
+
+```{r}
+uscities_sf$can_dist <- set_units(st_distance(uscities_sf, can_border), "km")
+```
+
+```{r}
+far_can <- uscities_sf %>%
+  arrange(desc(can_dist)) %>%
+  select(city, state_name, can_dist) %>%
+  slice(1:5)
+
+flextable(far_can)
+```
+
+The five cities farthest from the Canada border are all in Texas. These include Guadalupe Guerra, Sandoval, Fronton, Fronton Ranchettes and Evergreen.
+
+## Question 3:
+
+```{r}
+library(ggplot2)
+library(ggrepel)
+library(gghighlight)
+```
+
+```{r}
+usstates <- st_transform(usstates, crs = eqdc)
+countbound <- st_transform(countbound, crs = eqdc)
+uscities_sf <- st_transform(uscities_sf, crs = eqdc)
+```
+
+**Data:**
+
+```{r}
+top10 <- uscities_sf %>%
+  arrange(desc(population)) %>%
+  slice(1:10)
+```
+
+```{r}
+ggplot() +
+  geom_sf(data = countbound, fill = "grey95", color = "black", lty = "dashed") +
+  geom_sf(data = usstates, fill = NA, color = "black", lwd = 0.5) +
+  geom_sf(data = top10, color = "red", size = 2) +
+  geom_label_repel(data = top10, 
+                   aes(geometry = geometry, label = city), 
+                   stat = "sf_coordinates", 
+                   size = 3, max.overlaps = Inf) +
+  theme_minimal() +
+  labs(title = "Top 10 Most Populous US Cities with State and Country Boundaries")
+```
+
+The figure above shows the US border and state borders in solid lines and the mexico and Canada borders in dashed lines. I have highlighted the most populated US cities which Include Chicago, Philadelphia, Boston, Los Angeles, Dallas, Washington, New York, Atlanta, Miami and Houston.
+
+**City Distance from the Border:**
+
+```{r}
+far_usa <- uscities_sf %>%
+  arrange(desc(usborder_dist)) %>%
+  slice(1:5)
+```
+
+```{r}
+uscities_sf <- uscities_sf %>%
+  mutate(
+    usborder_dist = as.numeric(usborder_dist),
+    state_border_dist = as.numeric(state_border_dist),
+    mex_dist = as.numeric(mex_dist),
+    can_dist = as.numeric(can_dist)
+  )
+```
+
+```{r}
+ggplot() +
+  geom_sf(data = usstates, fill = NA, color = "black") +
+  geom_sf(data = uscities_sf, aes(color = usborder_dist), size = 0.5) +
+  scale_color_viridis_c(name = "Distance to National Border (km)") +
+  geom_sf(data = far_usa, color = "red", size = 1.5) +
+  geom_label_repel(data = far_usa, 
+                   aes(geometry = geometry, label = city),
+                   stat = "sf_coordinates", size = 3) +
+  theme_minimal() +
+  labs(title = "Distance of US Cities from National Border")
+```
+
+The map above shows a color gradient of the distance of cities from the US border. I have highlighted the five cities farthest from the border.
+
+**City Distance From Nearest State:**
+
+```{r}
+far_state_border <- uscities_sf %>%
+  arrange(desc(state_border_dist)) %>%
+  slice(1:5)
+```
+
+```{r}
+ggplot() +
+  geom_sf(data = usstates, fill = NA, color = "black") +
+  geom_sf(data = uscities_sf, aes(color = state_border_dist), size = 0.5) +
+  scale_color_viridis_c(name = "Distance to State Border (km)") +
+  geom_sf(data = far_state_border, color = "blue", size = 1.5) +
+  geom_label_repel(data = far_state_border,
+                   aes(geometry = geometry, label = city),
+                   stat = "sf_coordinates", size = 3) +
+  theme_minimal() +
+  labs(title = "Distance of US Cities from Nearest State Border")
+```
+
+The map above shows a color gradient that represents cities distances from their state borders. I have highlighted the five cities farthest from a state border.
+
+**Equidistance boundary from Mexico and Canada**
+
+```{r}
+uscities_sf <- uscities_sf %>%
+  mutate(diff_can_mex = abs(can_dist - mex_dist))
+```
+
+```{r}
+eq_cities <- uscities_sf %>%
+  filter(diff_can_mex < 100)
+```
+
+```{r}
+top5_eq <- eq_cities %>%
+  arrange(desc(population)) %>%
+  slice(1:5)
+```
+
+```{r}
+ggplot() +
+  geom_sf(data = usstates, fill = NA, color = "gray") +
+  geom_sf(data = eq_cities, aes(color = diff_can_mex), size = 0.5) +
+  scale_color_viridis_c(name = "Difference in Dist (km)") +
+  gghighlight(diff_can_mex < 100) +
+  geom_label_repel(data = top5_eq,
+                   aes(geometry = geometry, label = city),
+                   stat = "sf_coordinates", size = 3) +
+  theme_minimal() +
+  labs(title = "US Cities Equidistant to Canada and Mexico (±100 km)")
+```
+
+The map above shows a line of cities that are nearly equidistant from the Canada and Mexico borders within a 100 km . The labeled cities are those that are the most populated of the list. These include Salt lake City, UT, Provo, UT, Fort Collins, CO, Greely, CO, and Topeka KS.
+
+## Question 4:
+
+**Quantifying the Border Zone:**
+
+```{r}
+border_cities <- uscities_sf %>%
+  filter(pmin(usborder_dist, mex_dist, can_dist, na.rm = TRUE) <= 160)
+```
+
+```{r}
+num_zone <- nrow(border_cities)
+```
+
+```{r}
+zone_pop <- sum(border_cities$population, na.rm = TRUE)
+```
+
+```{r}
+total_pop <- sum(uscities_sf$population, na.rm = TRUE)
+```
+
+```{r}
+perc_zone <- (zone_pop / total_pop) * 100
+```
+
+```{r}
+border_summary <- tibble(
+  `# Cities in Zone` = num_zone,
+  `Population in Zone` = zone_pop,
+  `Total Population` = total_pop,
+  `Percent in Zone` = round(perc_zone, 2)
+)
+
+flextable(border_summary)
+
+```
+
+1.  There are 9,821 cities in the 100 mile zone
+2.  There are 216,048,530 people living in the cities within this zone
+3.  54.53% of the total population lives within this zone.
+4.  The ACLU article predicts that 2/3 of the population lives in the 100 mile border zone. This is an overestimate, because it is closer to 1/2 of the population.
+
+**Mapping The Border Zone:**
+
+```{r}
+ggplot() +
+  geom_sf(data = usstates, fill = NA, color = "gray") +
+  geom_sf(
+    data = border_cities,
+    aes(color = usborder_dist),
+    size = 0.7
+  ) +
+  scale_color_gradient(low = "orange", high = "darkred", name = "Distance to Border (km)") +
+  gghighlight(TRUE) +
+  geom_label_repel(
+    data = border_cities %>%
+      arrange(desc(population)) %>%
+      slice(1:10),
+    aes(geometry = geometry, label = city),
+    stat = "sf_coordinates",
+    size = 3
+  ) +
+  theme_minimal() +
+  labs(title = "US Cities Within 100 Miles of a Border — Colored by Distance")
+```
+
+The map above shows all of the US cities within 100m miles of the border. The gradient refers to the distance each city is from the border. The labeled cities are the most populated cities within this border zone. These include Detroit, New York, Boston, Philadelphia, Miami, Houston, San Diego, Los Angeles, San Francisco and Seattle.
+
+**Most Populous Cities in The Danger Zone:**
+
+```{r}
+top_per_state <- border_cities %>%
+  group_by(state_name) %>%
+  slice_max(order_by = population, n = 1, with_ties = FALSE) %>%
+  ungroup()
+```
+
+```{r}
+ggplot() +
+  geom_sf(data = usstates, fill = NA, color = "gray") +
+  geom_sf(
+    data = border_cities,
+    aes(color = usborder_dist),
+    size = 0.7
+  ) +
+  scale_color_gradient(low = "orange", high = "darkred", name = "Distance to Border (km)") +
+  gghighlight(TRUE) +
+  geom_label_repel(
+    data = top_per_state,
+    aes(geometry = geometry, label = city),
+    stat = "sf_coordinates",
+    size = 3
+  ) +
+  theme_minimal() +
+  labs(title = "Most Populous City in Each State Within the 100-Mile Border Zone")
+```
+
+The map above shows all of the US cities within 100m miles of the border. The gradient refers to the distance each city is from the border. The labeled cities are the most populated cities in each state within this border zone.
